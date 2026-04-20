@@ -13,21 +13,21 @@ export const dompetSchema = z.object({
 export const budgetSchema = z.object({
   kategori_id: z.string().uuid('Pilih kategori'),
   jumlah: z.number().min(1, 'Jumlah budget harus lebih dari 0'),
-  periode: z.enum(['bulanan', 'tahunan', 'custom']).default('bulanan'),
+  periode: z.enum(['bulanan', 'tahunan', 'custom']).optional(),
   bulan: z.number().min(1).max(12).optional().nullable(),
-  tahun: z.number().min(2000).max(2100),
+  tahun: z.number().min(2000).max(2100).optional(),
   tanggal_mulai: z.string().date().optional().nullable(),
   tanggal_selesai: z.string().date().optional().nullable(),
-  carry_over: z.boolean().default(false),
-  notif_persen: z.number().min(50).max(100).default(80),
+  carry_over: z.boolean().optional(),
+  notif_persen: z.number().min(50).max(100).optional(),
 });
 
 export const tujuanKeuanganSchema = z.object({
   nama: z.string().min(1, 'Nama tujuan wajib diisi').max(50, 'Nama maksimal 50 karakter'),
   target_jumlah: z.number().min(1, 'Target jumlah harus lebih dari 0'),
   deadline: z.string().date().optional().nullable(),
-  ikon: z.string().default('target'),
-  warna: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default('#6366f1'),
+  ikon: z.string().optional(),
+  warna: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   catatan: z.string().max(500).optional().nullable(),
 });
 
