@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowUpCircle, ArrowDownCircle, ArrowLeftRight, Calendar } from 'lucide-react';
@@ -13,6 +13,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { CurrencyInput } from '@/components/ui/CurrencyInput';
 import { transaksiSchema, type TransaksiInput } from '@/lib/validations/transaksi';
 import { createClient } from '@/lib/supabase/client';
+import { AttachmentUpload } from './AttachmentUpload';
+import { TagSelector } from './TagSelector';
 import type { Transaksi } from '@/types/database';
 
 interface TransaksiFormProps {
@@ -50,6 +52,23 @@ export function TransaksiForm({ transaksi, onSuccess }: TransaksiFormProps) {
   });
 
   const jumlah = watch('jumlah');
+  const [attachments, setAttachments] = useState<string[]>(transaksi?.lampiran || []);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  // Load existing tags when editing
+  useEffect(() => {
+    if (transaksi?.id) {
+      supabase
+        .from('transaksi_tags')
+        .select('tag_id')
+        .eq('transaksi_id', transaksi.id)
+        .then(({ data }) => {
+          if (data) {
+            setSelectedTags(data.map(t => t.tag_id));
+          }
+        });
+    }
+  }, [transaksi?.id]);
 
   const onSubmit = async (data: TransaksiInput) => {
     try {
@@ -67,7 +86,7 @@ export function TransaksiForm({ transaksi, onSuccess }: TransaksiFormProps) {
           .from('transaksi')
           .update({
             ...data,
-            tipe,
+            lampiran: attachments,
             updated_at: new Date().toISOString(),
           })
           .eq('id', transaksi.id);
@@ -76,19 +95,41 @@ export function TransaksiForm({ transaksi, onSuccess }: TransaksiFormProps) {
           toast.error(error.message);
           return;
         }
+
+        // Update tags - delete existing and insert new
+        await supabase.from('transaksi_tags').delete().eq('transaksi_id', transaksi.id);
+        if (selectedTags.length > 0) {
+          const tagInserts = selectedTags.map(tagId => ({
+            transaksi_id: transaksi.id,
+            tag_id: tagId,
+          }));
+          await supabase.from('transaksi_tags').insert(tagInserts);
+        }
+
         toast.success('Transaksi berhasil diperbarui!');
       } else {
         // Create new
-        const { error } = await supabase.from('transaksi').insert({
-          ...data,
-          user_id: userData.user.id,
-          tipe,
-        });
+        const { data: transaksiData, error } = await supabase.from('transaksi')
+          .insert({
+            ...data,
+            user_id: userData.user.id,
+            lampiran: attachments,
+            tipe,
+          })
+          .select()
+          .single();
 
-        if (error) {
-          toast.error(error.message);
-          return;
+        if (error) throw error;
+
+        // Save tags
+        if (selectedTags.length > 0 && transaksiData?.id) {
+          const tagInserts = selectedTags.map(tagId => ({
+            transaksi_id: transaksiData.id,
+            tag_id: tagId,
+          }));
+          await supabase.from('transaksi_tags').insert(tagInserts);
         }
+
         toast.success('Transaksi berhasil ditambahkan!');
       }
       onSuccess?.();
@@ -169,6 +210,25 @@ export function TransaksiForm({ transaksi, onSuccess }: TransaksiFormProps) {
           placeholder="Tambahkan catatan..."
           {...register('catatan')}
           rows={3}
+        />
+      </div>
+
+      {/* Tags */}
+      <div className="space-y-2">
+        <Label>Tags / Label</Label>
+        <TagSelector
+          selectedTags={selectedTags}
+          onChange={setSelectedTags}
+        />
+      </div>
+
+      {/* Attachments */}
+      <div className="space-y-2">
+        <Label>Lampiran</Label>
+        <AttachmentUpload
+          transactionId={transaksi?.id}
+          attachments={attachments}
+          onUpload={setAttachments}
         />
       </div>
 

@@ -4,6 +4,8 @@ import { SummaryCards } from '@/components/dashboard/SummaryCards';
 import { RecentTransactions } from '@/components/dashboard/RecentTransactions';
 import { BudgetOverview } from '@/components/dashboard/BudgetOverview';
 import { QuickAdd } from '@/components/dashboard/QuickAdd';
+import { CalendarView } from '@/components/dashboard/CalendarView';
+import { InsightsCard } from '@/components/dashboard/InsightsCard';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -62,7 +64,12 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+          <InsightsCard 
+            transaksi={transaksi || []} 
+            budget={budget || []}
+          />
           <RecentTransactions transaksi={transaksi?.slice(0, 5) || []} />
+          <CalendarView transaksi={transaksi || []} />
         </div>
         <div className="space-y-6">
           <BudgetOverview budget={budget || []} transaksi={transaksi || []} />

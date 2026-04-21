@@ -23,7 +23,7 @@ export const recurringRuleSchema = z.object({
   tanggal_mulai: z.string().date(),
   tanggal_selesai: z.string().date().optional().nullable(),
   catatan: z.string().max(500).optional().nullable(),
-  is_active: z.boolean().default(true),
+  is_active: z.boolean().optional(),
 });
 
 export const transferSchema = z.object({

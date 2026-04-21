@@ -8,6 +8,7 @@ import type { User } from '@supabase/supabase-js';
 import type { Profile } from '@/types/database';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from "@/components/theme-toggle"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,6 +81,8 @@ export function Topbar({ user, profile }: TopbarProps) {
             <Bell className="h-5 w-5 text-gray-600" />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
           </Button>
+
+          <ThemeToggle />
 
           <DropdownMenu>
             <DropdownMenuTrigger>

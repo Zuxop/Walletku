@@ -12,13 +12,28 @@ export interface Profile {
   mata_uang: string;
   bahasa: string;
   tema: string;
-  pin_hash: string | null;
   notif_harian: boolean;
   notif_budget: boolean;
   notif_hutang: boolean;
   privacy_mode: boolean;
+  biometric_enabled: boolean;
+  biometric_credential_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Tag {
+  id: string;
+  user_id: string;
+  nama: string;
+  warna: string;
+  created_at: string;
+}
+
+export interface TransaksiTag {
+  transaksi_id: string;
+  tag_id: string;
+  tag?: Tag;
 }
 
 export interface Kategori {
@@ -39,9 +54,9 @@ export interface Dompet {
   id: string;
   user_id: string;
   nama: string;
-  tipe: TipeDompet;
   saldo_awal: number;
   mata_uang: string;
+  tipe: TipeDompet;
   warna: string;
   ikon: string;
   urutan: number;
@@ -69,6 +84,8 @@ export interface Transaksi {
   is_recurring: boolean;
   recurring_id: string | null;
   is_pending: boolean;
+  is_split: boolean;
+  parent_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -102,6 +119,13 @@ export interface RecurringRule {
   catatan: string | null;
   is_active: boolean;
   created_at: string;
+  updated_at: string;
+  last_generated_at: string | null;
+}
+
+export interface RecurringRuleWithRelations extends RecurringRule {
+  kategori: Kategori | null;
+  dompet: Dompet | null;
 }
 
 export interface Budget {

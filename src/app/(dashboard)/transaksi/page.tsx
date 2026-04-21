@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, Filter, Download, Search } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Plus, Filter, Download, Search, Repeat, Pencil, Trash2, X, Check, Split } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,12 +25,16 @@ import { useDompet } from '@/hooks/useDompet';
 import { useKategori } from '@/hooks/useKategori';
 import { formatRupiah } from '@/lib/utils/currency';
 import { formatTanggal } from '@/lib/utils/date';
+import { exportToCSV, exportToExcel, importFromCSV, ImportRow } from '@/lib/utils/export';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'react-hot-toast';
 import { createClient } from '@/lib/supabase/client';
 import { TransaksiForm } from '@/components/transaksi/TransaksiForm';
+import { RecurringList } from '@/components/transaksi/RecurringList';
+import { SplitTransactionForm } from '@/components/transaksi/SplitTransactionForm';
+import { useRecurring } from '@/hooks/useRecurring';
 import type { Transaksi } from '@/types/database';
 import {
   ArrowUpRight,
@@ -56,7 +60,60 @@ export default function TransaksiPage() {
   const { transaksi, loading: isLoading, refetch: mutate } = useTransaksi();
   const { dompet } = useDompet();
   const { kategori } = useKategori();
+  const [isImporting, setIsImporting] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splittingTransaksi, setSplittingTransaksi] = useState<Transaksi | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { rules: recurringRules, refetch: refetchRecurring } = useRecurring();
+  const [recurringOpen, setRecurringOpen] = useState(false);
   const supabase = createClient();
+
+  const handleExportCSV = () => {
+    if (filteredTransaksi) {
+      exportToCSV(filteredTransaksi, `transaksi-${new Date().toISOString().split('T')[0]}`);
+    }
+  };
+
+  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    importFromCSV(
+      file,
+      async (data) => {
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          if (!userData.user) {
+            toast.error('Anda harus login terlebih dahulu');
+            return;
+          }
+
+          // Import transactions
+          for (const row of data) {
+            await supabase.from('transaksi').insert({
+              ...row,
+              user_id: userData.user.id,
+            });
+          }
+
+          toast.success(`${data.length} transaksi berhasil diimport!`);
+          mutate();
+        } catch (error) {
+          toast.error('Gagal mengimport transaksi');
+        } finally {
+          setIsImporting(false);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+        }
+      },
+      (error) => {
+        toast.error(error);
+        setIsImporting(false);
+      }
+    );
+  };
 
   // Filter by search
   const filteredTransaksi = transaksi?.filter((t) => {
@@ -225,29 +282,76 @@ export default function TransaksiPage() {
         <p className="text-sm text-gray-500">
           {filteredTransaksi?.length || 0} transaksi ditemukan
         </p>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger>
-            <Button className="bg-indigo-600 hover:bg-indigo-700">
-              <Plus className="mr-2 h-4 w-4" />
-              Tambah Transaksi
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>
-                {editingTransaksi ? 'Edit Transaksi' : 'Tambah Transaksi'}
-              </DialogTitle>
-            </DialogHeader>
-            <TransaksiForm
-              transaksi={editingTransaksi}
-              onSuccess={() => {
-                setOpen(false);
-                setEditingTransaksi(null);
-                mutate();
-              }}
-            />
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          <Dialog open={recurringOpen} onOpenChange={setRecurringOpen}>
+            <DialogTrigger>
+              <Button variant="outline">
+                <Repeat className="mr-2 h-4 w-4" />
+                Transaksi Berkala ({recurringRules.length})
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Kelola Transaksi Berkala</DialogTitle>
+              </DialogHeader>
+              <RecurringList
+                rules={recurringRules}
+                kategori={kategori}
+                dompet={dompet}
+                onSuccess={() => {
+                  refetchRecurring();
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger>
+              <Button className="bg-indigo-600 hover:bg-indigo-700">
+                <Plus className="mr-2 h-4 w-4" />
+                Tambah Transaksi
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingTransaksi ? 'Edit Transaksi' : 'Tambah Transaksi'}
+                </DialogTitle>
+              </DialogHeader>
+              <TransaksiForm
+                transaksi={editingTransaksi}
+                onSuccess={() => {
+                  setOpen(false);
+                  setEditingTransaksi(null);
+                  mutate();
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+
+          {/* Split Transaction Dialog */}
+          <Dialog open={splitOpen} onOpenChange={setSplitOpen}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Pecah Transaksi</DialogTitle>
+              </DialogHeader>
+              {splittingTransaksi && (
+                <SplitTransactionForm
+                  transaksi={splittingTransaksi}
+                  kategori={kategori || []}
+                  onSuccess={() => {
+                    setSplitOpen(false);
+                    setSplittingTransaksi(null);
+                    mutate();
+                  }}
+                  onCancel={() => {
+                    setSplitOpen(false);
+                    setSplittingTransaksi(null);
+                  }}
+                />
+              )}
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Transaction List */}
@@ -265,6 +369,10 @@ export default function TransaksiPage() {
               }}
               onDelete={() => handleDelete(t.id)}
               onConfirm={() => handleConfirm(t.id)}
+              onSplit={() => {
+                setSplittingTransaksi(t);
+                setSplitOpen(true);
+              }}
             />
           ))}
         </div>
@@ -287,6 +395,7 @@ function TransaksiCard({
   onEdit,
   onDelete,
   onConfirm,
+  onSplit,
 }: {
   transaksi: Transaksi;
   dompet?: { nama: string; warna: string; ikon: string };
@@ -294,6 +403,7 @@ function TransaksiCard({
   onEdit: () => void;
   onDelete: () => void;
   onConfirm: () => void;
+  onSplit?: () => void;
 }) {
   const isPemasukan = transaksi.tipe === 'pemasukan';
   const isPengeluaran = transaksi.tipe === 'pengeluaran';
@@ -381,15 +491,27 @@ function TransaksiCard({
             </Button>
             <Button
               variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-red-600"
+              size="sm"
+              className="text-red-600"
               onClick={onDelete}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
+            {!transaksi.is_split && transaksi.tipe !== 'transfer' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-blue-600"
+                onClick={onSplit}
+              >
+                <Split className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>
     </Card>
   );
 }
+
+// ...

@@ -231,7 +231,7 @@ export default function BudgetPage() {
         </div>
       ) : (
         <EmptyState
-          icon={Wallet}
+          icon={<Wallet />}
           title="Belum ada budget"
           description="Tambahkan budget untuk mengatur pengeluaran per kategori"
           actionLabel="Tambah Budget"

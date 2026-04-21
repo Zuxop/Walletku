@@ -26,11 +26,12 @@ CREATE TABLE profiles (
     mata_uang VARCHAR(3) DEFAULT 'IDR',
     bahasa VARCHAR(10) DEFAULT 'id',
     tema VARCHAR(20) DEFAULT 'light',
-    pin_hash VARCHAR(255),
     notif_harian BOOLEAN DEFAULT true,
     notif_budget BOOLEAN DEFAULT true,
     notif_hutang BOOLEAN DEFAULT true,
     privacy_mode BOOLEAN DEFAULT false,
+    biometric_enabled BOOLEAN DEFAULT false,
+    biometric_credential_id TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -143,17 +144,19 @@ CREATE POLICY "Users can delete own wallets" ON dompet
 CREATE TABLE transaksi (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    tipe tipe_transaksi NOT NULL,
-    jumlah NUMERIC(15,2) NOT NULL CHECK (jumlah > 0),
+    tipe VARCHAR(20) NOT NULL CHECK (tipe IN ('pemasukan', 'pengeluaran', 'transfer')),
+    jumlah DECIMAL(15,2) NOT NULL CHECK (jumlah >= 0),
     kategori_id UUID REFERENCES kategori(id),
-    dompet_id UUID REFERENCES dompet(id),
+    dompet_id UUID NOT NULL REFERENCES dompet(id),
     dompet_tujuan_id UUID REFERENCES dompet(id),
-    tanggal TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    tanggal TIMESTAMPTZ DEFAULT NOW(),
     catatan TEXT,
-    lampiran JSONB,
+    lampiran TEXT[],
+    status VARCHAR(20) DEFAULT 'selesai' CHECK (status IN ('selesai', 'pending', 'cancelled')),
     is_recurring BOOLEAN DEFAULT false,
-    recurring_rule_id UUID,
-    is_pending BOOLEAN DEFAULT false,
+    recurring_rule_id UUID REFERENCES recurring_rules(id),
+    is_split BOOLEAN DEFAULT false,
+    parent_id UUID REFERENCES transaksi(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -460,6 +463,99 @@ CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW
     EXECUTE FUNCTION add_default_categories();
+
+-- ============================================
+-- TAGS (Labels)
+-- ============================================
+
+CREATE TABLE tags (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    nama VARCHAR(30) NOT NULL,
+    warna VARCHAR(7) DEFAULT '#6366f1',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE tags ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own tags" ON tags
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own tags" ON tags
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own tags" ON tags
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Junction table for transaction tags
+CREATE TABLE transaksi_tags (
+    transaksi_id UUID NOT NULL REFERENCES transaksi(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (transaksi_id, tag_id)
+);
+
+ALTER TABLE transaksi_tags ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view transaction tags" ON transaksi_tags
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM transaksi t 
+            WHERE t.id = transaksi_id AND t.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can insert transaction tags" ON transaksi_tags
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM transaksi t 
+            WHERE t.id = transaksi_id AND t.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete transaction tags" ON transaksi_tags
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM transaksi t 
+            WHERE t.id = transaksi_id AND t.user_id = auth.uid()
+        )
+    );
+
+-- ============================================
+-- DOMPET (Wallets)
+-- ============================================
+
+CREATE TABLE dompet (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    nama VARCHAR(100) NOT NULL,
+    saldo DECIMAL(15,2) DEFAULT 0,
+    mata_uang VARCHAR(3) DEFAULT 'IDR',
+    tipe VARCHAR(20) NOT NULL CHECK (tipe IN ('cash', 'bank', 'ewallet', 'kartu_kredit', 'investasi', 'lainnya')),
+    warna VARCHAR(7) DEFAULT '#6366f1',
+    ikon VARCHAR(50) DEFAULT '💳',
+    catatan TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TRIGGER update_dompet_updated_at 
+    BEFORE UPDATE ON dompet 
+    FOR EACH ROW 
+    EXECUTE FUNCTION update_updated_at_column();
+
+ALTER TABLE dompet ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own wallets" ON dompet
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own wallets" ON dompet
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own wallets" ON dompet
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own wallets" ON dompet
+    FOR DELETE USING (auth.uid() = user_id);
 
 -- ============================================
 -- INDEXES FOR PERFORMANCE

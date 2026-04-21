@@ -115,3 +115,77 @@ export function exportToPDF(laporan: LaporanData, filename: string): void {
 
   doc.save(`${filename}.pdf`);
 }
+
+// Import functions
+export interface ImportRow {
+  tanggal: string;
+  tipe: 'pemasukan' | 'pengeluaran' | 'transfer';
+  jumlah: number;
+  kategori_id?: string;
+  dompet_id: string;
+  catatan?: string;
+}
+
+export function parseCSV(csvContent: string): ImportRow[] {
+  const lines = csvContent.trim().split('\n');
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  const rows: ImportRow[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+    if (values.length !== headers.length) continue;
+
+    const row: any = {};
+    headers.forEach((header, index) => {
+      row[header.toLowerCase()] = values[index];
+    });
+
+    // Validate and convert
+    const tipe = row.tipe?.toLowerCase();
+    if (!['pemasukan', 'pengeluaran', 'transfer'].includes(tipe)) continue;
+
+    const jumlah = parseFloat(row.jumlah);
+    if (isNaN(jumlah) || jumlah <= 0) continue;
+
+    rows.push({
+      tanggal: row.tanggal || new Date().toISOString(),
+      tipe,
+      jumlah,
+      dompet_id: row.dompet || '',
+      kategori_id: row.kategori || undefined,
+      catatan: row.catatan || undefined,
+    });
+  }
+
+  return rows;
+}
+
+export function importFromCSV(
+  file: File,
+  onSuccess: (data: ImportRow[]) => void,
+  onError: (error: string) => void
+): void {
+  const reader = new FileReader();
+  
+  reader.onload = (e) => {
+    try {
+      const content = e.target?.result as string;
+      const data = parseCSV(content);
+      if (data.length === 0) {
+        onError('File CSV kosong atau format tidak valid');
+        return;
+      }
+      onSuccess(data);
+    } catch (err) {
+      onError('Gagal membaca file CSV');
+    }
+  };
+
+  reader.onerror = () => {
+    onError('Gagal membaca file');
+  };
+
+  reader.readAsText(file);
+}
